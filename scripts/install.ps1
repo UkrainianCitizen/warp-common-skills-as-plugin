@@ -1,21 +1,22 @@
 param(
   [string]$CloneDir,
+  [string]$DestDir,
   [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
 
 $RepoUrl = "https://github.com/warpdotdev/common-skills/"
-$DestSkillsDir = Join-Path $HOME ".agents\skills"
 $CleanupCloneDir = $false
 
 function Show-Usage {
-  Write-Output "Usage: ./install.ps1 [-CloneDir DIR]"
+  Write-Output "Usage: ./install.ps1 [-CloneDir DIR] [-DestDir DIR]"
   Write-Output ""
   Write-Output "Clone common-skills and copy its skills into $DestSkillsDir."
   Write-Output ""
   Write-Output "Options:"
   Write-Output "  -CloneDir DIR   Directory to clone common-skills into."
+  Write-Output "  -DestDir DIR    Base directory whose .agents\skills directory should receive skills."
   Write-Output "  -Help           Show this help message."
 }
 
@@ -40,8 +41,18 @@ function Should-OverwriteSkill {
 }
 
 if ($Help) {
+  if ([string]::IsNullOrWhiteSpace($DestDir)) {
+    $DestSkillsDir = Join-Path $HOME ".agents\skills"
+  } else {
+    $DestSkillsDir = Join-Path $DestDir ".agents\skills"
+  }
   Show-Usage
   exit 0
+}
+if ([string]::IsNullOrWhiteSpace($DestDir)) {
+  $DestSkillsDir = Join-Path $HOME ".agents\skills"
+} else {
+  $DestSkillsDir = Join-Path $DestDir ".agents\skills"
 }
 
 if ([string]::IsNullOrWhiteSpace($CloneDir)) {
