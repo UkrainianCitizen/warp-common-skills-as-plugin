@@ -635,7 +635,10 @@ fail_if_global_lock_mismatch() {
 
   echo "error: global common skills are pinned to a different skills-lock.json than ${LOCK_FILE}." >&2
   echo "Another checkout may depend on the currently installed global common-skills version." >&2
-  echo "Explicitly reconcile the checkouts, update them to the same lock, or remove and reinstall the global common skills with scripts/remove_common_skills --repo-root ${REPO_ROOT} --global." >&2
+  echo "To reuse the installed global copy, update this checkout to the same skills-lock.json and rerun." >&2
+  echo "To keep this checkout's existing lock, rerun and choose project instead of global." >&2
+  echo "To replace the global copy, run this from the consuming repo and then rerun:" >&2
+  echo "  ./script/resolve_common_skills remove_common_skills -- --repo-root ${REPO_ROOT} --global" >&2
   exit 1
 }
 
@@ -719,7 +722,23 @@ function collectFiles(baseDir, currentDir, results) {
   }
 }
 
-function computeSkillFolderHash(skillDir) {
+function normalizeCrlf(content) {
+  // Git or platform tooling may rewrite checked-out text files as CRLF even
+  // though the lockfile hash was computed from LF-normalized repository data.
+  const carriageReturnByte = 13;
+  const lineFeedByte = 10;
+  const normalized = [];
+  for (let index = 0; index < content.length; index++) {
+    const byte = content[index];
+    if (byte === carriageReturnByte && content[index + 1] === lineFeedByte) {
+      continue;
+    }
+    normalized.push(byte);
+  }
+  return Buffer.from(normalized);
+}
+
+function computeSkillFolderHash(skillDir, normalizeLineEndings = false) {
   const files = [];
   collectFiles(skillDir, skillDir, files);
   files.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
@@ -727,7 +746,7 @@ function computeSkillFolderHash(skillDir) {
   const hash = crypto.createHash("sha256");
   for (const file of files) {
     hash.update(file.relativePath);
-    hash.update(file.content);
+    hash.update(normalizeLineEndings ? normalizeCrlf(file.content) : file.content);
   }
 
   return hash.digest("hex");
@@ -746,7 +765,11 @@ function verifyTarget(skills, installTarget) {
     }
 
     const computedHash = computeSkillFolderHash(skillDir);
-    if (computedHash !== skill.computedHash) {
+    // Preserve exact-byte verification first, then allow an equivalent CRLF
+    // checkout to match the lockfile before reporting drift.
+    const normalizedComputedHash =
+      computedHash === skill.computedHash ? computedHash : computeSkillFolderHash(skillDir, true);
+    if (normalizedComputedHash !== skill.computedHash) {
       errors.push(`error: ${name} does not match skills-lock.json`);
       errors.push(`  expected: ${skill.computedHash}`);
       errors.push(`  actual:   ${computedHash}`);
