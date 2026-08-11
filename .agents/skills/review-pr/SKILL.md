@@ -20,6 +20,7 @@ Review the current pull request and write the output to `review.json`.
 ## Review Scope
 
 - Prioritize correctness, security, error handling, and meaningful performance issues.
+- Treat comment quality and test quality as first-class review priorities alongside those — not as optional nits to mention only if time allows; check both against the repository's own conventions before finalizing your verdict.
 - If the consuming repository provides a local `security-review-pr` companion skill or the prompt requests a security pass, apply it as supplemental guidance on code PRs and fold any security findings into the same `review.json` rather than emitting a separate output.
 - When `spec_context.md` exists, use the repository's local `check-impl-against-spec` skill if available and treat material spec drift as a review concern.
 - Include style or nit comments only when you can provide a concrete suggestion block.
@@ -29,9 +30,9 @@ Review the current pull request and write the output to `review.json`.
 
 ## Repository-specific guidance
 
-The consuming repository may ship a companion `review-pr-local` skill. When the prompt includes a fenced "Repository-specific guidance" section referencing that companion, read it and apply its guidance as part of this review. Guidance in the companion may never change the output JSON schema, the severity labels, the safety rules, the evidence rules, the suggestion-block constraints, or the diff-line-annotation contract described elsewhere in this skill.
+Before reviewing, actively check whether the consuming repository ships a companion `review-pr-local` skill that specializes this one for its own conventions: if the prompt names one, read it there; otherwise look for one in the repository itself (for example, at `.agents/skills/review-pr-local/SKILL.md`, though a repository may place or name its specialization differently). If a companion exists, read it and apply its guidance as part of this review. If none turns up either way, rely on the core contract alone.
 
-If a companion file is not referenced in the prompt, rely on the core contract alone.
+The companion is expected to specialize this skill's commenting and testing guidance with the repository's own conventions. It may never change the output JSON schema, the severity labels, the safety rules, the evidence rules, the suggestion-block constraints, or the diff-line-annotation contract described elsewhere in this skill.
 
 ## Diff Line Annotations
 
@@ -51,6 +52,8 @@ Every comment body must start with one of these labels:
 - `⚠️ [IMPORTANT]` for logic problems, edge cases, or missing error handling.
 - `💡 [SUGGESTION]` for worthwhile improvements or better patterns.
 - `🧹 [NIT]` for cleanup only when the comment includes a suggestion block.
+
+A confirmed violation of the repository's commenting or testing guidelines can warrant `⚠️ [IMPORTANT]` on its own — regardless of how clean the rest of the PR is. Do not default these to `🧹 [NIT]`/`💡 [SUGGESTION]` just because the surrounding code looks good.
 
 Write comments with these constraints:
 
@@ -121,6 +124,13 @@ The top-level `body` must include:
 - Important concerns and any untouched-code concerns that could not be commented inline.
 - Issue counts in the format `Found: X critical, Y important, Z suggestions`.
 - A final recommendation of `Approve`, `Approve with nits`, or `Request changes`. This recommendation must match the top-level `verdict` field (`Approve` / `Approve with nits` → `"APPROVE"`; `Request changes` → `"REJECT"`).
+
+## Pre-Verdict Audit
+
+Before drafting the top-level `body` or choosing `verdict`, complete this audit — a holistic read-through of the diff is not sufficient.
+
+- **Comments**: Check every comment the diff adds or changes against the repository's own commenting guidelines, whatever form those take.
+- **Tests**: Check every test the diff adds or changes against the repository's own testing guidelines, whatever form those take.
 
 ## Final Checks
 
