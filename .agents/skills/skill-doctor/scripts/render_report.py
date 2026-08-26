@@ -89,9 +89,13 @@ WARP_MARK = (
     + "</svg>"
 )
 
-# Footer stamp, shared by the page and the exported share image.
-STAMP_NAME = "warp factories"
+# Sticky report footer.
+STAMP_NAME = "Self improve your workflows with Warp Factories"
 STAMP_SUB = "continuous scoring \u00b7 continuous skill tuning"
+
+# Attribution shown only in the exported share image.
+SHARE_STAMP_NAME = "Get your report with /skill-doctor"
+SHARE_STAMP_SUB = "npx skills add warpdotdev/common-skills --skill skill-doctor"
 
 # Design tokens lifted from warp.dev/factories (factories-landing.css):
 # white ground with a dot grid, Matter-Mono-ish monospace, #2a1eff accent,
@@ -100,13 +104,25 @@ STAMP_SUB = "continuous scoring \u00b7 continuous skill tuning"
 PAGE_CSS = """
 * { box-sizing: border-box; }
 body {
+  --mono-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --fg: #1a1522; --muted: #5d5966; --muted-2: #918d9a; --accent: #2a1eff;
   --line: rgba(13, 10, 61, 0.16); --line-soft: rgba(13, 10, 61, 0.07);
-  --bg-panel: #f6f5fb; --yellow: #eef17c;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  background: radial-gradient(circle at 1px 1px, var(--line-soft) 1px, transparent 0) 0 0 / 22px 22px, #fff;
+  --page-bg: #fff; --surface: #fff; --bg-panel: #f6f5fb; --yellow: #eef17c;
+  --button-fg: #1a1522;
+  --footer-shadow: rgba(13, 10, 61, 0.12);
+  font-family: var(--mono-font);
+  background: radial-gradient(circle at 1px 1px, var(--line-soft) 1px, transparent 0) 0 0 / 22px 22px, var(--page-bg);
   color: var(--fg); max-width: 900px; margin: 0 auto; padding: 48px 24px;
-  line-height: 1.65; font-size: 13px;
+  line-height: 1.65; font-size: 13px; color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  body {
+    --fg: #f4f1f8; --muted: #bbb5c2; --muted-2: #928b9b; --accent: #9188ff;
+    --line: rgba(239, 235, 255, 0.2); --line-soft: rgba(239, 235, 255, 0.08);
+    --page-bg: #0f0d14; --surface: #17141d; --bg-panel: #211d29;
+    --footer-shadow: rgba(0, 0, 0, 0.45);
+    color-scheme: dark;
+  }
 }
 ::selection { background: var(--accent); color: #fff; }
 h1 { font-weight: 500; letter-spacing: -2px; font-size: 34px; margin: 4px 0 0; }
@@ -120,19 +136,21 @@ li { margin-bottom: 10px; }
 .muted { color: var(--muted-2); font-size: 12px; }
 .stamp { display: flex; align-items: center; gap: 11px; }
 .stamp .mark { width: 27px; height: 26px; flex: none; display: block; }
-.stamp-name { font-size: 15px; font-weight: 600; letter-spacing: -0.03em; text-transform: lowercase; }
+.stamp-name { font-size: 15px; font-weight: 600; letter-spacing: -0.03em; }
 .stamp-sub { font-size: 11px; color: var(--muted-2); text-transform: lowercase; letter-spacing: 0.02em; }
-.stamp-row { border: 1px solid var(--line); background: #fff; padding: 12px 16px; }
+.stamp-row { border: 1px solid var(--line); background: var(--surface); padding: 12px 16px; }
+.factories-footer { position: sticky; bottom: 16px; z-index: 20; margin-top: 40px;
+  box-shadow: 0 8px 24px var(--footer-shadow); }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .title-row { margin-top: 4px; }
 .title-row h1 { margin: 0; }
-.cta-button { font-family: inherit; font-size: 13px; font-weight: 600; color: var(--fg);
-  background: var(--yellow); border: 1px solid var(--fg); padding: 8px 14px;
+.cta-button { font-family: inherit; font-size: 13px; font-weight: 600; color: var(--button-fg);
+  background: var(--yellow); border: 1px solid var(--button-fg); padding: 8px 14px;
   text-decoration: none; white-space: nowrap; flex: none; cursor: pointer; }
 .cta-button:hover { background: #f4f79f; }
 .cta-button[disabled] { cursor: default; opacity: 0.65; }
 .scorecard { display: flex; align-items: center; gap: 48px; border: 1px solid var(--line);
-  background: #fff; padding: 26px 28px; margin-top: 20px; }
+  background: var(--surface); padding: 26px 28px; margin-top: 20px; }
 .grade-col { text-align: center; flex: none; width: 170px; }
 .grade { font-size: 96px; font-weight: 600; line-height: 1; letter-spacing: -5px; color: var(--accent); }
 .grade-label { font-size: 11px; color: var(--muted-2); margin-top: 8px; text-transform: uppercase; letter-spacing: 0.14em; }
@@ -149,7 +167,8 @@ li { margin-bottom: 10px; }
 .stat .num { font-size: 34px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .stat .lbl { font-size: 12px; color: var(--muted); margin-top: 2px; text-transform: lowercase; }
 .diff-wrap { margin: 10px 0 4px; }
-.diff-view { display: grid; gap: 10px; max-width: 100%; }
+.diff-view { display: grid; gap: 10px; max-width: 100%;
+  --diffs-font-family: var(--mono-font); --diffs-header-font-family: var(--mono-font); }
 .diff-view > * { min-width: 0; }
 .diff-fallback { background: var(--bg-panel); border: 1px solid var(--line); padding: 13px 16px;
   color: var(--muted); font-size: 12px; line-height: 1.7; overflow-x: auto; margin: 0; white-space: pre; }
@@ -159,7 +178,7 @@ li { margin-bottom: 10px; }
   mask-image: linear-gradient(#000 calc(100% - 72px), transparent);
 }
 .diff-toggle { font-family: inherit; font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--accent); background: #fff;
+  text-transform: uppercase; color: var(--accent); background: var(--surface);
   border: 1px solid var(--line); padding: 5px 10px; margin-top: 6px; cursor: pointer; }
 .diff-toggle:hover { border-color: var(--accent); }
 """
@@ -198,6 +217,7 @@ def render_page(r) -> str:
 
     card_data = json.dumps({
         "title": r.get("title", "Agent Skill Report"),
+        "eyebrow": "skill-doctor",
         "handle": r.get("handle") or "agent skill report",
         "harness": r.get("harness", "codex"),
         "grade": grade,
@@ -214,12 +234,13 @@ def render_page(r) -> str:
             [str(stats.get("skills_found", 0)), "skills installed"],
             [str(stats.get("skills_used", 0)), "skills used"],
         ],
-        "stamp": [STAMP_NAME, STAMP_SUB],
+        "stamp": [SHARE_STAMP_NAME, SHARE_STAMP_SUB],
         "paths": [{"d": d, "fill": fill} for d, fill in WARP_PATHS],
         "viewbox": list(WARP_VIEWBOX),
     })
 
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
 <title>{esc(r.get('title', 'Agent Skill Report'))}</title>
 <style>{PAGE_CSS.replace('__CLAMP__', str(DIFF_CLAMP_PX))}</style></head><body>
 <div class="tag">skill-doctor</div>
@@ -236,13 +257,12 @@ def render_page(r) -> str:
 <div class="stats">{stat_cells}</div>
 <h2>Findings</h2><ul>{findings}</ul>
 <h2>Suggested skill changes</h2><ol>{suggestions}</ol>
-<h2>Do this automatically</h2>
-<div class="stamp-row row">
+<div class="stamp-row row factories-footer">
   <div class="stamp">{WARP_MARK}<div>
     <div class="stamp-name">{esc(STAMP_NAME)}</div>
     <div class="stamp-sub">{esc(STAMP_SUB)}</div>
   </div></div>
-  <a class="cta-button" href="{esc(r.get('cta_url', 'https://warp.dev/factories/request-access'))}">Request access</a>
+  <a class="cta-button" href="{esc(r.get('cta_url', 'https://warp.dev/factories/request-access'))}">Request access to Warp Factories</a>
 </div>
 <script>{embedded_diffs_script()}</script>
 <script>{page_script(card_data)}</script>
@@ -371,6 +391,10 @@ def page_script(card_data: str) -> str:
 
     // body
     dots(fx + 1, barBottom + 1, fw - 2, 404, 26);
+    font('400', 11);
+    track('0.4px');
+    c.fillStyle = ACCENT;
+    text('# ' + CARD.eyebrow, fx + 36, barBottom + 18);
     font('500', 34);
     track('-2px');
     c.fillStyle = FG;
