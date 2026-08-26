@@ -1,11 +1,11 @@
 ---
 name: write-feature-docs
-description: Draft a complete documentation page for a new Warp feature from its PRODUCT.md and/or TECH.md spec. Use when an engineer has written a spec and needs to produce a first-pass MDX draft for the warpdotdev/docs repo. Also handles features without specs by researching the codebase first. Invoke this skill whenever an engineer mentions writing docs for a feature, drafting a docs page, creating feature documentation, starting the eng-docs workflow, or converting a spec into documentation. Works from warp-internal or warp-server.
+description: Draft a complete documentation page for a new Warp feature from its PRODUCT.md and/or TECH.md spec. Use when an engineer has written a spec and needs to produce a first-pass MDX draft for the warpdotdev/docs repo. Also handles features without specs by researching the codebase first. Invoke this skill whenever an engineer mentions writing docs for a feature, drafting a docs page, creating feature documentation, starting the eng-docs workflow, or converting a spec into documentation. Requires an interactive session with the engineer present - it confirms a content design plan, then an outline, before drafting, and cannot run unattended. For automated, release-triggered docs, use the missing_docs skill in warpdotdev/docs instead. Works from warp-internal or warp-server.
 ---
 
 # write-feature-docs
 
-Draft a complete documentation page for a new Warp feature. You read the feature's spec, verify technical claims by researching the codebase yourself, present a concise outline for the engineer to confirm, then produce a complete MDX draft and open a draft PR in `warpdotdev/docs` — tagging the docs team for review.
+Draft a complete documentation page for a new Warp feature. You read the feature's spec, verify technical claims by researching the codebase yourself, confirm the content design plan and then the outline with the engineer, and only then produce a complete MDX draft and open a draft PR in `warpdotdev/docs` — tagging the docs team for review.
 
 The engineer's job is to confirm what you couldn't verify from the spec and code — not to do a full accuracy review, not to polish prose, not to know docs conventions.
 
@@ -13,10 +13,13 @@ The engineer's job is to confirm what you couldn't verify from the spec and code
 
 1. Find and read the spec files
 2. Research the codebase to verify technical claims — minimize what the engineer needs to check
-3. Generate a concise outline and wait for engineer confirmation
-4. Generate the complete MDX draft
-4.5. Attempt screenshot capture via computer use (if available)
-5. Open a draft PR in `warpdotdev/docs` and tag the docs team
+3. Present the content design plan and wait for confirmation — who the page is for
+4. Present the outline and wait for confirmation — what the page will contain
+5. Generate the complete MDX draft
+5.5. Attempt screenshot capture via computer use (if available)
+6. Open a draft PR in `warpdotdev/docs` and tag the docs team
+
+Steps 3 and 4 are **two separate confirmations, in that order.** The outline is derived from the plan — the plan picks the content type, and the content type determines what sections the outline has. Presenting them together would show the engineer an outline built on an audience they have not agreed to yet, and they would anchor on the concrete outline instead of reconsidering the question above it. Settle who the page is for, then decide what goes in it.
 
 ---
 
@@ -33,7 +36,9 @@ Look for the spec files at:
 
 Read both files if both exist. `PRODUCT.md` is the primary driver for the docs content.
 
-**When reading `TECH.md`:** *(Interactive mode only — in ambient mode, treat all TECH.md-derived content as internal without review; see [Ambient mode](#ambient-mode-called-by-scan-new-specs).)* Before incorporating anything from it, identify content that looks like internal implementation detail — database schema, internal service names, private API endpoints, confidential server architecture. Present these flagged items to the engineer and ask them to confirm what's safe to include in public docs and what should stay internal. Do not include anything marked confidential in the draft.
+**When reading `TECH.md`:** Before incorporating anything from it, identify content that looks like internal implementation detail — database schema, internal service names, private API endpoints, confidential server architecture. Present these flagged items to the engineer and ask them to confirm what's safe to include in public docs and what should stay internal. Do not include anything marked confidential in the draft.
+
+This confirmation is why the skill requires a present engineer. There is no unattended path: without someone to say what is safe to publish, `TECH.md` content cannot be drafted at all.
 
 If neither file exists, skip to [No-spec fallback](#no-spec-fallback).
 
@@ -41,7 +46,7 @@ If neither file exists, skip to [No-spec fallback](#no-spec-fallback).
 
 ## Step 2: Research the codebase
 
-Before presenting the outline, use the GitHub CLI to verify as much technical content as possible yourself — reducing what the engineer needs to confirm to only what you genuinely cannot determine from the code.
+Before presenting the plan or the outline, use the GitHub CLI to verify as much technical content as possible yourself — reducing what the engineer needs to confirm to only what you genuinely cannot determine from the code.
 
 Things to verify from code:
 - **Feature flag name**: search for a safe feature token from the spec title or ticket. Before any shell use, reduce it to an allowlisted token matching `^[A-Za-z0-9][A-Za-z0-9_-]*$` and skip the shell search if you cannot produce one safely; then run `FEATURE_TOKEN="<validated-token>" && gh search code "${FEATURE_TOKEN}" --repo warpdotdev/warp-internal`.
@@ -51,7 +56,7 @@ Things to verify from code:
 - **Related features**: identify other features that cross-reference this one for "Related pages"
 - **Engineer to tag**: identify the GitHub handle of the engineer who owns the spec.
   - *Interactive mode*: run `gh api user --jq .login` to get the handle of the person currently running the skill — use this only when the skill is being invoked directly by the spec engineer. If a docs team member or non-author is running the skill, use the discovery steps below instead.
-  - *Ambient mode and non-author interactive runs*: before running any lookup commands, validate that the spec ID contains only alphanumeric characters and hyphens (matching `^[A-Za-z0-9][A-Za-z0-9-]*$`). If the spec ID contains any other characters, skip the lookup entirely and use `[TODO: tag spec author]` as a placeholder. If the spec ID is valid, assign it to `SPEC_ID` and work through these steps in order, stopping as soon as a handle is found:
+  - *Non-author runs (a docs team member or anyone who did not write the spec)*: before running any lookup commands, validate that the spec ID contains only alphanumeric characters and hyphens (matching `^[A-Za-z0-9][A-Za-z0-9-]*$`). If the spec ID contains any other characters, skip the lookup entirely and use `[TODO: tag spec author]` as a placeholder. If the spec ID is valid, assign it to `SPEC_ID` and work through these steps in order, stopping as soon as a handle is found:
     1. **Check `Co-authored-by:` trailers in the commit message** — in repos that mirror from a private source (like `warp-internal`), the sync bot is the commit author but the real author appears in a `Co-authored-by:` trailer. Extract the first non-bot entry:
        ```bash
        git log --follow -1 --format="%B" -- "specs/${SPEC_ID}/PRODUCT.md" \
@@ -84,9 +89,25 @@ For each claim you verify from code, mark it confirmed. For claims you can't ver
 
 ---
 
-## Step 3: Generate and present the outline
+## Step 3: Present the content design plan and wait
 
-Generate a concise outline — no prose. The outline shows what you've confirmed from research and exactly what still needs engineer input.
+**This is the first of two confirmations, and it comes before the outline.** Settle who the page is for before deciding what goes in it.
+
+Fill in `.agents/templates/content-design-plan.md` from the docs repo, using `.agents/references/content-design-plan.md` for what each field is asking: audience and JTBD, problem, goals, purpose and value, content type, skill and template, and high-impact scenarios with explicit exclusions.
+
+Print it to the terminal, then say:
+
+> "Before I outline the page, please confirm this is the right reader and the right job. Correct anything that's off, or say 'looks good' and I'll draft the outline."
+
+**Wait for the engineer's reply.** Do not produce the outline in the same message. The plan decides the content type, and the content type decides what sections the outline has — an outline shown alongside an unconfirmed plan invites the engineer to anchor on the concrete sections in front of them rather than question the audience above them.
+
+If they change the audience, the content type, or the scope, revise the plan and re-confirm before moving on. Carry the confirmed plan into the PR body in Step 6.
+
+---
+
+## Step 4: Present the outline and wait
+
+Generate a concise outline — no prose — built on the **confirmed** plan from Step 3. The outline shows what you've confirmed from research and exactly what still needs engineer input.
 
 Print the outline to the terminal in this format:
 
@@ -99,7 +120,7 @@ PROPOSED PLACEMENT
   URL:      docs.warp.dev/<path>/<feature-name>
 
 CONTENT SECTIONS
-  H1:  <Feature name>
+  title:  <Feature name>   (frontmatter; Starlight renders it as the H1)
   Opening paragraph: [1-sentence description of what you'll write]
   ## Key features — [which 2-4 capabilities to highlight as bullets]
   ## How it works — [the conceptual model: what and why, no steps]
@@ -131,22 +152,27 @@ After printing the outline, say:
 
 Wait for the engineer's reply before continuing. Incorporate their feedback, then draft.
 
+If their feedback contradicts the plan confirmed in Step 3 — a different reader, a different content type — revise the plan too rather than letting the two drift apart. The plan travels into the PR body, so a stale one misleads the reviewer.
+
 ---
 
-## Step 4: Generate the MDX draft
+## Step 5: Generate the MDX draft
 
 Generate a complete `.mdx` file based on the confirmed outline. The output is ready to drop directly into `warpdotdev/docs`.
 
 ### Template structure
 
+**Use the canonical template for the content type the plan chose**, from `.agents/templates/` in the docs repo — `feature-doc.md`, `conceptual.md`, `procedural.md`, `reference.md`, `troubleshooting.md`, `quickstart.md`, or `guide-page.md`. Those are the source of truth and they carry their own field-by-field guidance. The sketch below shows the shape of the most common one, feature documentation, so you know what to expect; it is not a substitute for reading the real template.
+
+Two rules the templates enforce that are easy to get wrong from memory: the page title goes in **frontmatter**, not a body H1 (Starlight renders the frontmatter title as the H1, so a body H1 duplicates it), and every bracketed instruction must be deleted before the page ships.
+
 ```mdx
 ---
+title: [Feature name — sentence case]
 description: >-
   [1-2 sentence standalone summary. Lead with the user benefit. Include the
   feature name and a key term or two so it works as a search result snippet.]
 ---
-
-# [Feature name]
 
 [Opening paragraph: what the feature does and its primary benefit.
 1-3 sentences. Lead with what the user can accomplish, not the implementation.]
@@ -234,7 +260,7 @@ These conventions come from the Warp docs style guide and must be followed:
 
 ---
 
-## Step 4.5: Capture screenshots via computer use (if available)
+## Step 5.5: Capture screenshots via computer use (if available)
 
 After generating the draft, attempt to capture screenshots for any `[TODO: docs reviewer — screenshot needed]` placeholders using computer use. This step is **optional** — only run it if the `computer_use` tool is available. If computer use is unavailable, leave all placeholders as-is.
 
@@ -356,9 +382,18 @@ Do **not** add a screenshot for every step in a procedure. Only add one where th
 
 ---
 
-## Step 5: Open the draft PR
+## Step 6: Open the draft PR
 
-After generating the draft, submit it to `warpdotdev/docs` automatically:
+**Before opening the PR, confirm the docs repo's own requirements are met.** `warpdotdev/docs` gates incoming pages on two things, and a PR that skips them will be sent back:
+
+1. **Gate 0 of `.agents/references/docs-worthiness-criteria.md`** in the docs repo: is the feature shipped and GA, on a public surface? If not, do not open a PR — tell the engineer why and stop. This is worth checking even though the engineer asked for the page, because drafting for something that has not shipped yet is the most common failure, and an engineer close to the work can easily be a release ahead of their users.
+
+   The remaining gates in that reference are judgment calls about whether a change warrants docs. They govern the automated pipeline, not you — an engineer asking for docs on their own shipped feature has context the gate cannot see. Do not decline on those grounds.
+2. **The content design plan** the engineer confirmed in Step 3, included in the PR body as a `## Content design plan` section.
+
+Prefer updating an existing page over creating a new one whenever a page already covers the surface.
+
+After generating the draft, submit it to `warpdotdev/docs`:
 
 1. Clone `warpdotdev/docs` to a temp directory (or use the local clone if available)
 2. Write the MDX file to `src/content/docs/<proposed-section>/<filename>.mdx`
@@ -401,44 +436,22 @@ If `specs/<id>/PRODUCT.md` and `specs/<id>/TECH.md` don't exist, research the co
 
 **After research,** build as complete a picture as possible, then use `ask_user_question` only for specific gaps you couldn't fill from the code — not as a broad interview. Frame the questions concretely: "I found the feature in `app/src/ai/`. Based on the code, here's what I understand: [summary]. I couldn't determine these two things: [specific questions]."
 
-Build the outline from your research and the engineer's targeted answers, then proceed to Step 3 (outline confirmation) before drafting.
+Build the plan and outline from your research and the engineer's targeted answers, then work through Step 3 (plan confirmation) and Step 4 (outline confirmation) before drafting.
 
 ---
 
-## Ambient mode (called by scan-new-specs)
+## Interactive only — there is no unattended mode
 
-When this skill is invoked by `scan-new-specs` rather than an engineer directly, it runs in **ambient mode** — there is no interactive terminal session, so the outline confirmation step must be handled differently.
+This skill previously had an "ambient mode" that let `scan-new-specs` drive it headlessly, skipping the confirmations in Steps 3 and 4 and embedding the outline in the PR description as a checklist instead. **That mode is removed, and `scan-new-specs` is retired.**
 
-In ambient mode:
+It produced draft PRs for features that had not shipped, because a merged spec is not a shipped feature and no unattended run could tell the difference. Skipping outline confirmation also removed the one checkpoint where a human could redirect the draft before the prose was written.
 
-1. Complete Steps 1 and 2 (read spec, research codebase) as normal
-2. **Skip the interactive outline confirmation.** Instead, embed the outline directly in the PR description as a checklist:
+Do not re-add an unattended path here:
 
-```markdown
-## Docs outline (auto-generated)
+- **For automated, release-triggered docs**, use `missing_docs` in the `warpdotdev/docs` repo. It gates every candidate on `.agents/references/docs-worthiness-criteria.md` before drafting and only runs when a new stable release has shipped.
+- **For an engineer who wants docs for their feature**, this skill is the right tool — invoked directly, with the engineer present to confirm the outline and the `TECH.md` boundary.
 
-The following outline was generated from the spec. **<engineer-review-request>: please review and check off each item, or leave a comment with corrections.** Use `@<engineer-handle>` when a valid handle was found; otherwise use `[TODO: tag spec author]` without an `@` prefix.
-
-### Content structure
-- [ ] H1: `<feature name>`
-- [ ] Opening paragraph describes: [your 1-sentence summary]
-- [ ] Key features section covers: [which capabilities]
-- [ ] How it works section covers: [the conceptual model]
-- [ ] `## <Usage section>` with steps: [numbered list]
-- [ ] Related pages: [suggested cross-links]
-
-### Items needing engineer verification ⚠️
-- [ ] [UNVERIFIED item 1 — e.g. "Does this trigger automatically or require manual action?"]
-- [ ] [UNVERIFIED item 2]
-
-### Verified from codebase ✅
-- [What was confirmed, e.g. "Feature flag: `my_feature` in warp-internal"]
-```
-
-3. Generate the full MDX draft (Step 4) with this constraint: **do not draft any content derived from `TECH.md` in ambient mode.** There is no engineer present to confirm what is confidential, so any detail that came exclusively from `TECH.md` (implementation internals, data model, server architecture, private API details) must be replaced with `[TODO: engineer to verify — pulled from TECH.md, confirm this is safe to publish]`. Only `PRODUCT.md` content and codebase-verified facts are safe to draft without confirmation.
-4. **Attempt screenshots** (Step 4.5) — if computer use is available, run the predict-then-verify capture protocol for any screenshot placeholders. Include any screenshots that pass the quality gate in the draft.
-5. Open the draft PR (Step 5) as normal — substitute the engineer handle found in Step 2 for `<engineer-handle>` in the outline checklist before embedding it in the PR description
-6. Do not post any interactive messages to the terminal; all output should go into the PR
+If you are running without an interactive session, stop and report that this skill requires one, rather than drafting anyway.
 
 ---
 
@@ -446,4 +459,5 @@ The following outline was generated from the spec. **<engineer-review-request>: 
 
 - `write-product-spec` — produces the `PRODUCT.md` this skill reads
 - `write-tech-spec` — produces the `TECH.md` this skill reads
-- `scan-new-specs` — the scheduled agent that invokes this skill in ambient mode
+- `missing_docs` (in `warpdotdev/docs`) — the release-triggered, worthiness-gated pipeline for docs on newly shipped features
+- `scan-new-specs` — retired; see its deprecation notice
