@@ -1,0 +1,39 @@
+name: Regenerate Claude plugin files
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".agents/skills/**"
+      - "scripts/generate_claude_plugins.py"
+      - ".github/workflows/regenerate-claude-plugins.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Regenerate plugins and marketplace
+        run: python3 scripts/generate_claude_plugins.py
+
+      - name: Commit changes
+        run: |
+          if git diff --quiet -- plugins .claude-plugin/marketplace.json; then
+            echo "Nothing to regenerate."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add plugins .claude-plugin/marketplace.json
+          git commit -m "Regenerate Claude plugin files from .agents/skills"
+          git push

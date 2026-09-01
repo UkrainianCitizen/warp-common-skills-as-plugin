@@ -69,6 +69,76 @@ Some skills copied here may still contain repository-specific examples, paths, c
 - moving repo-specific overrides back into the repository that needs them
 - keeping descriptions broad enough to trigger in multiple repositories, but specific enough to avoid unrelated tasks
 
+## Use as a Claude Code plugin
+
+This fork is also published as a Claude Code plugin marketplace. The marketplace
+manifest (`.claude-plugin/marketplace.json`) and the `plugins/` tree are
+**generated** from `.agents/skills/` by `scripts/generate_claude_plugins.py` and
+regenerated in CI on every push to `main`. Do not edit them by hand.
+
+Claude Code enables or disables whole plugins, not individual skills, so the
+generator emits a few curated bundles:
+
+| Plugin | Skills |
+|---|---|
+| `warp-engineering` | all dev-workflow skills (specs, PRs, CI triage, merge conflicts, `saga`) |
+| `warp-engineering-pocockless` | `warp-engineering` minus skills that overlap [`mattpocock-skills`](https://github.com/mattpocock/skills) (`code-review`, `resolving-merge-conflicts`) |
+| `warp-productivity` | `research`, `readout`, `council`, `cross-critique` |
+| `warp-productivity-pocockless` | `warp-productivity` minus `research` (overlaps `mattpocock-skills`) |
+| `warp-misc` | `brandalf`, `complain`, `suggestion-box`, `skill-doctor`, `update-skill` |
+| `warp-all` | every skill in the repo |
+
+Use a `*-pocockless` variant if you already run `mattpocock-skills` and don't want
+two skills competing to trigger for the same task. `scan-new-specs` is retired
+upstream and ships only in `warp-all`.
+
+### Install
+
+```sh
+/plugin marketplace add UkrainianCitizen/warp-common-skills-as-plugin
+/plugin install warp-engineering-pocockless@warp-common-skills
+/plugin install warp-productivity-pocockless@warp-common-skills
+/plugin install warp-misc@warp-common-skills
+```
+
+### Enable / disable
+
+Use the `/plugin` menu, or:
+
+```sh
+claude plugin disable warp-misc
+claude plugin enable warp-misc
+```
+
+### Sync updates
+
+```sh
+/plugin marketplace update
+```
+
+This pulls the latest `main`, including any skills synced from
+`warpdotdev/common-skills` upstream. Background auto-update also covers it.
+
+The `.github/workflows/sync-upstream.yml` workflow merges `warpdotdev/common-skills`
+`main` into this fork daily (and on manual `workflow_dispatch`), regenerates the
+plugin files, and pushes. To sync on demand, run the workflow from the Actions tab
+or locally:
+
+```sh
+git remote add upstream https://github.com/warpdotdev/common-skills.git  # once
+git fetch upstream main && git merge upstream/main
+python3 scripts/generate_claude_plugins.py
+git push
+```
+
+### Regenerate locally
+
+After merging upstream skill changes into `.agents/skills/`:
+
+```sh
+python3 scripts/generate_claude_plugins.py
+```
+
 ## Usage
 
 Consumers can install the shared skills with the `skills` CLI.

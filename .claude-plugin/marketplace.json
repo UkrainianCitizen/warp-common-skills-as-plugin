@@ -1,0 +1,48 @@
+{
+  "name": "warp-common-skills",
+  "owner": {
+    "name": "UkrainianCitizen"
+  },
+  "metadata": {
+    "description": "Fork of warpdotdev/common-skills packaged as a Claude Code plugin marketplace: curated bundle plugins (engineering, productivity, misc), pocockless variants that drop skills overlapping mattpocock-skills, and warp-all.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "warp-engineering",
+      "source": "./plugins/warp-engineering",
+      "description": "All Warp dev-workflow skills: specs, PRs, CI triage, merge conflicts, autonomous implementation.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "warp-productivity",
+      "source": "./plugins/warp-productivity",
+      "description": "Research, readout documents, and multi-agent council/critique skills.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "warp-misc",
+      "source": "./plugins/warp-misc",
+      "description": "Meta and internal skills: brand assets, skill authoring, skill-doctor, agent feedback channels.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "warp-engineering-pocockless",
+      "source": "./plugins/warp-engineering-pocockless",
+      "description": "warp-engineering minus skills that overlap mattpocock-skills (code-review, resolving-merge-conflicts).",
+      "version": "0.1.0"
+    },
+    {
+      "name": "warp-productivity-pocockless",
+      "source": "./plugins/warp-productivity-pocockless",
+      "description": "warp-productivity minus the research skill, which overlaps mattpocock-skills.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "warp-all",
+      "source": "./plugins/warp-all",
+      "description": "Every skill in this fork of warpdotdev/common-skills, in one plugin.",
+      "version": "0.1.0"
+    }
+  ]
+}

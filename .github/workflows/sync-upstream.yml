@@ -1,0 +1,55 @@
+name: Sync from warpdotdev/common-skills
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Merge upstream main
+        id: merge
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/warpdotdev/common-skills.git
+          git fetch upstream main
+          before="$(git rev-parse HEAD)"
+          # -X ours keeps our packaging files if upstream ever collides with them.
+          git merge --no-edit -X ours upstream/main
+          after="$(git rev-parse HEAD)"
+          if [ "$before" = "$after" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Regenerate plugin files
+        if: steps.merge.outputs.changed == 'true'
+        run: python3 scripts/generate_claude_plugins.py
+
+      - name: Commit and push
+        if: steps.merge.outputs.changed == 'true'
+        run: |
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Sync skills from warpdotdev/common-skills and regenerate plugins"
+          fi
+          git push origin HEAD:main
