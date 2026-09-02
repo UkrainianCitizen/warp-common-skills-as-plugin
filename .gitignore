@@ -5,3 +5,6 @@ __pycache__/
 
 # Skill eval workspaces produced by the create-skill harness
 *-workspace/
+
+# Local agent notes
+/AGENTS.md
