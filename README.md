@@ -1,9 +1,9 @@
 # warp-common-skills-as-plugin
 
 A fork of [`warpdotdev/common-skills`](https://github.com/warpdotdev/common-skills)
-packaged as a **Claude Code plugin marketplace**. Upstream ships its skills through
-the `skills` npm CLI; this fork exposes the same `.agents/skills/` as installable
-Claude Code plugins and keeps them synced.
+packaged as a Claude Code plugin marketplace. Upstream ships its skills through the
+`skills` npm CLI. This fork exposes the same `.agents/skills/` as installable Claude
+Code plugins and keeps them synced.
 
 ## Install
 
@@ -22,7 +22,7 @@ Then install one or more bundles:
 ## Bundles
 
 Claude Code enables or disables whole plugins, not individual skills, so the skills
-are grouped into a few curated bundles. Every plugin name is prefixed `warp-`.
+are grouped into a few bundles. Every plugin name is prefixed `warp-`.
 
 | Plugin | Skills |
 |---|---|
@@ -55,7 +55,7 @@ claude plugin enable warp-misc
 ```
 
 `.github/workflows/sync-upstream.yml` merges `warpdotdev/common-skills` `main` into
-this fork daily (and on manual `workflow_dispatch`), regenerates the plugin files,
+this fork daily, and on manual `workflow_dispatch`. It regenerates the plugin files
 and pushes. To sync on demand, run that workflow from the Actions tab, or locally:
 
 ```sh
@@ -67,16 +67,20 @@ git push
 
 ## How the packaging works
 
-- `.agents/skills/` is the source of truth, synced from upstream. Skills keep their
-  own `SKILL.md` frontmatter — that is what Claude Code uses to trigger them.
-- `scripts/generate_claude_plugins.py` copies skills into `plugins/` and writes
-  `.claude-plugin/marketplace.json`. The `CATEGORIES` dict in that script is the
-  hand-maintained skill-to-bundle mapping; a newly synced skill not listed there
-  lands in `warp-all` only and prints a warning.
-- `.github/workflows/regenerate-claude-plugins.yml` reruns the generator and commits
-  whenever `.agents/skills/` or the generator changes on `main`.
-- **Do not hand-edit `plugins/` or `.claude-plugin/marketplace.json`** — they are
-  generated. Edit the generator or the skills.
+`.agents/skills/` is the source of truth, synced from upstream. Each skill keeps its
+own `SKILL.md` frontmatter, which is what Claude Code reads to decide when to trigger
+it.
+
+`scripts/generate_claude_plugins.py` copies skills into `plugins/` and writes
+`.claude-plugin/marketplace.json`. The `CATEGORIES` dict in that script is the
+hand-maintained skill-to-bundle mapping. A newly synced skill that is not listed
+there lands in `warp-all` only and prints a warning.
+
+`.github/workflows/regenerate-claude-plugins.yml` reruns the generator and commits
+whenever `.agents/skills/` or the generator changes on `main`.
+
+Do not hand-edit `plugins/` or `.claude-plugin/marketplace.json`. They are generated.
+Edit the generator or the skills instead.
 
 For skill authoring conventions and the upstream contribution process, see the
 [upstream README](https://github.com/warpdotdev/common-skills#readme).
