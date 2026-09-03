@@ -20,12 +20,12 @@ import re
 import sqlite3
 import subprocess
 import sys
+from collections import deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import unquote
 from warp_decoder import ProtobufDecodeError, decode_task
 
-MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_WARP_CONVERSATION_BYTES = 32 * 1024 * 1024
 MAX_MSG_CHARS = 1500
 MAX_TOOL_CHARS = 500
@@ -238,14 +238,65 @@ def extract_text(content) -> str:
     return "\n".join(parts)
 
 
+def iter_jsonl_records(path: Path):
+    """Yield every valid JSON object without loading the whole file."""
+    stream = path.open("r", encoding="utf-8", errors="replace")
+
+    def records():
+        with stream:
+            for line in stream:
+                try:
+                    yield json.loads(line)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+
+    return records()
+
+
+class TranscriptBuffer:
+    """Keep complete short transcripts and a bounded head/tail for long ones."""
+
+    def __init__(self):
+        self._entries = []
+        self._tail = None
+        self._total = 0
+
+    def append(self, entry):
+        self._total += 1
+        if self._tail is None:
+            self._entries.append(entry)
+            if len(self._entries) > MAX_TRANSCRIPT_ENTRIES:
+                self._tail = deque(self._entries[-TRANSCRIPT_TAIL:], maxlen=TRANSCRIPT_TAIL)
+                self._entries = self._entries[:TRANSCRIPT_HEAD]
+        else:
+            self._tail.append(entry)
+
+    def finish(self):
+        if self._tail is None:
+            return self._entries
+        omitted = self._total - TRANSCRIPT_HEAD - TRANSCRIPT_TAIL
+        return self._entries + [
+            ("note", f"[... {omitted} entries omitted ...]")
+        ] + list(self._tail)
+
+
+def detect_skill_candidates(text: str):
+    """Extract possible installed-skill names from one tool argument payload."""
+    normalized = text.replace("\\", "/")
+    candidates = set(re.findall(r"(?:^|/)skills/+([^/]+)/+", normalized))
+    candidates.update(re.findall(
+        r'"(?:skill|name|bundled_skill_id)"\s*:\s*"([^"]+)"',
+        normalized,
+    ))
+    return candidates
+
+
 def parse_claude_session(path: Path, skill_names, include_subagents: bool):
     """Normalize one Claude Code JSONL session to the shared transcript shape."""
     try:
-        raw = path.read_text(errors="replace")
+        records = iter_jsonl_records(path)
     except OSError:
         return None
-    if len(raw) > MAX_FILE_BYTES:
-        raw = raw[:MAX_FILE_BYTES]
 
     meta = {}
     stats = {
@@ -255,21 +306,16 @@ def parse_claude_session(path: Path, skill_names, include_subagents: bool):
         "repeated_tool_calls": 0,
         "error_outputs": 0,
     }
-    entries = []
+    entries = TranscriptBuffer()
     seen_calls = {}
     seen_assistant_messages = set()
-    call_args_text = []
     used_tool_names = set()
     skills_used = set()
+    has_code_edit_hint = False
     first_ts = last_ts = None
     is_sidechain = False
 
-    for line in raw.splitlines():
-        try:
-            obj = json.loads(line)
-        except (json.JSONDecodeError, ValueError):
-            continue
-
+    for obj in records:
         ts = obj.get("timestamp")
         if ts:
             first_ts = first_ts or ts
@@ -339,11 +385,14 @@ def parse_claude_session(path: Path, skill_names, include_subagents: bool):
                 seen_calls[key] = seen_calls.get(key, 0) + 1
                 if seen_calls[key] > 1:
                     stats["repeated_tool_calls"] += 1
-                call_args_text.append(args_text)
                 used_tool_names.add(name)
+                skills_used.update(detect_skill_candidates(args_text))
+                has_code_edit_hint = has_code_edit_hint or any(
+                    hint in args_text for hint in CODE_EDIT_HINTS
+                )
                 if name == "Skill" and isinstance(args, dict):
                     skill_name = args.get("skill")
-                    if skill_name in skill_names:
+                    if skill_name:
                         skills_used.add(skill_name)
                 entries.append((f"tool:{name}", truncate(args_text, MAX_TOOL_CHARS)))
             elif block_type == "tool_result":
@@ -367,18 +416,13 @@ def parse_claude_session(path: Path, skill_names, include_subagents: bool):
     elif is_sidechain:
         meta["thread_source"] = "subagent"
 
-    args_blob = "\n".join(call_args_text)
-    skills_used.update(
-        name for name in skill_names
-        if f"skills/{name}/" in args_blob or f"{name}/SKILL.md" in args_blob
-    )
     stats["first_ts"] = first_ts
     stats["last_ts"] = last_ts
     stats["has_code_edits"] = (
         bool(used_tool_names & CLAUDE_CODE_EDIT_TOOLS)
-        or any(hint in args_blob for hint in CODE_EDIT_HINTS)
+        or has_code_edit_hint
     )
-    return meta, stats, entries, sorted(skills_used)
+    return meta, stats, entries.finish(), sorted(skills_used)
 
 
 def looks_injected(text: str) -> bool:
@@ -396,24 +440,19 @@ def looks_injected(text: str) -> bool:
 def parse_codex_session(path: Path, skill_names, include_subagents: bool):
     """Returns (meta, stats, entries) or None if the session should be skipped."""
     try:
-        raw = path.read_text(errors="replace")
+        records = iter_jsonl_records(path)
     except OSError:
         return None
-    if len(raw) > MAX_FILE_BYTES:
-        raw = raw[:MAX_FILE_BYTES]
 
     meta = {}
     stats = {"user_turns": 0, "assistant_turns": 0, "tool_calls": 0, "repeated_tool_calls": 0, "error_outputs": 0}
-    entries = []
+    entries = TranscriptBuffer()
     seen_calls = {}
-    call_args_text = []
+    skills_used = set()
+    has_code_edits = False
     first_ts = last_ts = None
 
-    for line in raw.splitlines():
-        try:
-            obj = json.loads(line)
-        except (json.JSONDecodeError, ValueError):
-            continue
+    for obj in records:
         ltype = obj.get("type")
         payload = obj.get("payload") or {}
         if not isinstance(payload, dict):
@@ -469,7 +508,10 @@ def parse_codex_session(path: Path, skill_names, include_subagents: bool):
                 seen_calls[key] = seen_calls.get(key, 0) + 1
                 if seen_calls[key] > 1:
                     stats["repeated_tool_calls"] += 1
-                call_args_text.append(args)
+                skills_used.update(detect_skill_candidates(args))
+                has_code_edits = has_code_edits or any(
+                    hint in args for hint in CODE_EDIT_HINTS
+                )
                 entries.append((f"tool:{name}", truncate(args, MAX_TOOL_CHARS)))
             elif ptype in ("function_call_output", "custom_tool_call_output"):
                 out = payload.get("output") or ""
@@ -483,19 +525,10 @@ def parse_codex_session(path: Path, skill_names, include_subagents: bool):
     if not meta:
         meta = {"id": path.stem, "cwd": None, "started_at": first_ts}
 
-    # A skill counts as used only when a tool call actually touched it (read its
-    # SKILL.md or ran something under its directory). The raw session text is
-    # unusable for this: Codex injects the full installed-skill list into every
-    # session preamble.
-    args_blob = "\n".join(call_args_text)
-    skills_used = sorted(
-        name for name in skill_names
-        if f"skills/{name}/" in args_blob or f"{name}/SKILL.md" in args_blob
-    )
     stats["first_ts"] = first_ts
     stats["last_ts"] = last_ts
-    stats["has_code_edits"] = any(h in args_blob for h in CODE_EDIT_HINTS)
-    return meta, stats, entries, skills_used
+    stats["has_code_edits"] = has_code_edits
+    return meta, stats, entries.finish(), sorted(skills_used)
 
 
 def parse_sqlite_timestamp(value):
@@ -839,25 +872,20 @@ def parse_pi_session(path: Path, skill_names, include_subagents: bool):
     compatibility with the Claude parser and ignored.
     """
     try:
-        raw = path.read_text(errors="replace")
+        records = iter_jsonl_records(path)
     except OSError:
         return None
-    if len(raw) > MAX_FILE_BYTES:
-        raw = raw[:MAX_FILE_BYTES]
 
     meta = {}
     stats = {"user_turns": 0, "assistant_turns": 0, "tool_calls": 0, "repeated_tool_calls": 0, "error_outputs": 0}
-    entries = []
+    entries = TranscriptBuffer()
     seen_calls = {}
-    call_args_text = []
     used_tool_names = set()
+    skills_used = set()
+    has_code_edit_hint = False
     first_ts = last_ts = None
 
-    for line in raw.splitlines():
-        try:
-            obj = json.loads(line)
-        except (json.JSONDecodeError, ValueError):
-            continue
+    for obj in records:
         record_type = obj.get("type")
         ts = obj.get("timestamp")
         if ts:
@@ -933,8 +961,11 @@ def parse_pi_session(path: Path, skill_names, include_subagents: bool):
                 seen_calls[key] = seen_calls.get(key, 0) + 1
                 if seen_calls[key] > 1:
                     stats["repeated_tool_calls"] += 1
-                call_args_text.append(args_text)
                 used_tool_names.add(name)
+                skills_used.update(detect_skill_candidates(args_text))
+                has_code_edit_hint = has_code_edit_hint or any(
+                    hint in args_text for hint in CODE_EDIT_HINTS
+                )
                 entries.append((f"tool:{name}", truncate(args_text, MAX_TOOL_CHARS)))
 
         if role == "user" and has_user_text:
@@ -949,18 +980,13 @@ def parse_pi_session(path: Path, skill_names, include_subagents: bool):
             "thread_source": None,
         }
 
-    args_blob = "\n".join(call_args_text)
-    skills_used = sorted(
-        name for name in skill_names
-        if f"skills/{name}/" in args_blob or f"{name}/SKILL.md" in args_blob
-    )
     stats["first_ts"] = first_ts
     stats["last_ts"] = last_ts
     stats["has_code_edits"] = (
         bool(used_tool_names & GENERIC_EDIT_TOOLS)
-        or any(hint in args_blob for hint in CODE_EDIT_HINTS)
+        or has_code_edit_hint
     )
-    return meta, stats, entries, skills_used
+    return meta, stats, entries.finish(), sorted(skills_used & set(skill_names))
 
 
 def find_grok_session_files(grok_home: Path, cutoff: datetime):
@@ -1004,23 +1030,18 @@ def parse_grok_session(path: Path, skill_names, include_subagents: bool):
     accepted for signature compatibility and ignored.
     """
     try:
-        raw = path.read_text(errors="replace")
+        records = iter_jsonl_records(path)
     except OSError:
         return None
-    if len(raw) > MAX_FILE_BYTES:
-        raw = raw[:MAX_FILE_BYTES]
 
     stats = {"user_turns": 0, "assistant_turns": 0, "tool_calls": 0, "repeated_tool_calls": 0, "error_outputs": 0}
-    entries = []
+    entries = TranscriptBuffer()
     seen_calls = {}
-    call_args_text = []
     used_tool_names = set()
+    skills_used = set()
+    has_code_edit_hint = False
 
-    for line in raw.splitlines():
-        try:
-            obj = json.loads(line)
-        except (json.JSONDecodeError, ValueError):
-            continue
+    for obj in records:
         record_type = obj.get("type")
         if record_type in ("system", "reasoning", "backend_tool_call"):
             continue
@@ -1044,8 +1065,11 @@ def parse_grok_session(path: Path, skill_names, include_subagents: bool):
                 seen_calls[key] = seen_calls.get(key, 0) + 1
                 if seen_calls[key] > 1:
                     stats["repeated_tool_calls"] += 1
-                call_args_text.append(args_text)
                 used_tool_names.add(name)
+                skills_used.update(detect_skill_candidates(args_text))
+                has_code_edit_hint = has_code_edit_hint or any(
+                    hint in args_text for hint in CODE_EDIT_HINTS
+                )
                 entries.append((f"tool:{name}", truncate(args_text, MAX_TOOL_CHARS)))
         elif record_type == "tool_result":
             result = extract_text(obj.get("content"))
@@ -1063,18 +1087,13 @@ def parse_grok_session(path: Path, skill_names, include_subagents: bool):
         "originator": "grok",
         "thread_source": None,
     }
-    args_blob = "\n".join(call_args_text)
-    skills_used = sorted(
-        name for name in skill_names
-        if f"skills/{name}/" in args_blob or f"{name}/SKILL.md" in args_blob
-    )
     stats["first_ts"] = None
     stats["last_ts"] = None
     stats["has_code_edits"] = (
         bool(used_tool_names & GENERIC_EDIT_TOOLS)
-        or any(hint in args_blob for hint in CODE_EDIT_HINTS)
+        or has_code_edit_hint
     )
-    return meta, stats, entries, skills_used
+    return meta, stats, entries.finish(), sorted(skills_used & set(skill_names))
 
 
 def find_zcode_session_files(zcode_home: Path, cutoff: datetime):
@@ -1101,18 +1120,12 @@ def parse_zcode_session(path: Path, skill_names, include_subagents: bool):
     full session.
     """
     try:
-        raw = path.read_text(errors="replace")
+        records = iter_jsonl_records(path)
     except OSError:
         return None
-    if len(raw) > MAX_FILE_BYTES:
-        raw = raw[:MAX_FILE_BYTES]
 
     messages = None
-    for line in raw.splitlines():
-        try:
-            obj = json.loads(line)
-        except (json.JSONDecodeError, ValueError):
-            continue
+    for obj in records:
         if not isinstance(obj, dict):
             continue
         body = (obj.get("request") or {}).get("body") or {}
@@ -1123,10 +1136,11 @@ def parse_zcode_session(path: Path, skill_names, include_subagents: bool):
         return None
 
     stats = {"user_turns": 0, "assistant_turns": 0, "tool_calls": 0, "repeated_tool_calls": 0, "error_outputs": 0}
-    entries = []
+    entries = TranscriptBuffer()
     seen_calls = {}
-    call_args_text = []
     used_tool_names = set()
+    skills_used = set()
+    has_code_edit_hint = False
 
     for message in messages:
         if not isinstance(message, dict):
@@ -1149,8 +1163,11 @@ def parse_zcode_session(path: Path, skill_names, include_subagents: bool):
                 seen_calls[key] = seen_calls.get(key, 0) + 1
                 if seen_calls[key] > 1:
                     stats["repeated_tool_calls"] += 1
-                call_args_text.append(args_text)
                 used_tool_names.add(name)
+                skills_used.update(detect_skill_candidates(args_text))
+                has_code_edit_hint = has_code_edit_hint or any(
+                    hint in args_text for hint in CODE_EDIT_HINTS
+                )
                 entries.append((f"tool:{name}", truncate(args_text, MAX_TOOL_CHARS)))
         elif role == "tool":
             result = extract_text(message.get("content"))
@@ -1161,6 +1178,7 @@ def parse_zcode_session(path: Path, skill_names, include_subagents: bool):
                 stats["error_outputs"] += 1
             entries.append(("output", truncate(result, MAX_TOOL_CHARS)))
 
+    entries = entries.finish()
     if not entries:
         return None
 
@@ -1171,18 +1189,13 @@ def parse_zcode_session(path: Path, skill_names, include_subagents: bool):
         "originator": "zcode",
         "thread_source": None,
     }
-    args_blob = "\n".join(call_args_text)
-    skills_used = sorted(
-        name for name in skill_names
-        if f"skills/{name}/" in args_blob or f"{name}/SKILL.md" in args_blob
-    )
     stats["first_ts"] = None
     stats["last_ts"] = None
     stats["has_code_edits"] = (
         bool(used_tool_names & GENERIC_EDIT_TOOLS)
-        or any(hint in args_blob for hint in CODE_EDIT_HINTS)
+        or has_code_edit_hint
     )
-    return meta, stats, entries, skills_used
+    return meta, stats, entries, sorted(skills_used & set(skill_names))
 
 
 def render_transcript(meta, stats, skills_used, entries) -> str:
@@ -1546,13 +1559,14 @@ def main():
             grok_home=grok_home,
             zcode_home=zcode_home,
         )
+    installed_skill_names = set(skills)
     for session in sessions:
         detected = detect_skills_from_entries(
             session["_entries"],
-            skills.keys(),
+            installed_skill_names,
         )
         session["skills_used"] = sorted(
-            set(session["skills_used"]) | detected
+            (set(session["skills_used"]) | detected) & installed_skill_names
         )
 
     sessions.sort(key=lambda session: session["modified_at"], reverse=True)
