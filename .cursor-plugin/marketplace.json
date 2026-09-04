@@ -3,10 +3,8 @@
   "owner": {
     "name": "UkrainianCitizen"
   },
-  "metadata": {
-    "description": "Fork of warpdotdev/common-skills packaged as a multi-tool plugin marketplace: curated bundle plugins (engineering, productivity, misc), pocockless variants that drop skills overlapping mattpocock-skills, and warp-all.",
-    "version": "0.1.0"
-  },
+  "description": "Fork of warpdotdev/common-skills packaged as a multi-tool plugin marketplace: curated bundle plugins (engineering, productivity, misc), pocockless variants that drop skills overlapping mattpocock-skills, and warp-all.",
+  "version": "0.1.0",
   "plugins": [
     {
       "name": "warp-engineering",

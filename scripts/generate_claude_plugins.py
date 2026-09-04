@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Generate Claude Code plugin + marketplace files from .agents/skills/.
+"""Generate multi-tool plugin + marketplace files from .agents/skills/.
 
-Claude Code enables/disables whole plugins, not individual skills. This script
-emits a small set of curated bundle plugins instead of one plugin per skill:
+Emits a small set of curated bundle plugins instead of one plugin per skill:
 
   warp-engineering              all dev-workflow skills
   warp-engineering-pocockless   ^ minus skills that overlap mattpocock-skills
@@ -10,6 +9,22 @@ emits a small set of curated bundle plugins instead of one plugin per skill:
   warp-productivity-pocockless  ^ minus skills that overlap mattpocock-skills
   warp-misc                     meta / branding / internal-feedback skills
   warp-all                      every skill in the repo, categorized or not
+
+Each plugin directory ships three manifests pointing at the same skills/ copy:
+
+  .claude-plugin/plugin.json   Claude Code
+  .cursor-plugin/plugin.json   Cursor's native format
+  plugin.json                  Agent Plugins 1.0 (the open standard Cursor and
+                                Codex both read; also the fallback for any tool
+                                that implements the open spec)
+
+...and two marketplace/registry files at the repo root:
+
+  .claude-plugin/marketplace.json   Claude Code (`/plugin marketplace add`)
+  .cursor-plugin/marketplace.json   Cursor (`Import from Repo`)
+
+Codex reads skills straight out of .agents/skills/ without a plugin wrapper,
+so no Codex-specific registry file is generated - see README.
 
 Skill content is copied from .agents/skills/ - that stays the source of truth
 and this script is re-run after every upstream sync. CATEGORIES is maintained
@@ -25,12 +40,14 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 SKILLS_SRC = REPO / ".agents" / "skills"
 PLUGINS_DIR = REPO / "plugins"
-MARKETPLACE = REPO / ".claude-plugin" / "marketplace.json"
+CLAUDE_MARKETPLACE = REPO / ".claude-plugin" / "marketplace.json"
+CURSOR_MARKETPLACE = REPO / ".cursor-plugin" / "marketplace.json"
 
 MARKETPLACE_NAME = "warp-common-skills"
 OWNER = {"name": "UkrainianCitizen"}
 AUTHOR = {"name": "UkrainianCitizen"}
 VERSION = "0.1.0"
+AGENT_PLUGINS_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
 BUNDLE_ALL = "warp-all"
 
 # Hand-maintained. Every skill dir in .agents/skills/ should appear in exactly
@@ -128,14 +145,34 @@ def copy_skill(src: Path, dst: Path) -> None:
 
 
 def build_plugin(name: str, skill_names: list[str], all_skill_dirs: dict[str, Path]) -> dict:
-    dst_skills = PLUGINS_DIR / name / "skills"
+    plugin_dir = PLUGINS_DIR / name
+    dst_skills = plugin_dir / "skills"
     for skill in skill_names:
         copy_skill(all_skill_dirs[skill], dst_skills / skill)
     desc = DESCRIPTIONS.get(name, f"{name} skills.")
+
+    # Claude Code
     write_json(
-        PLUGINS_DIR / name / ".claude-plugin" / "plugin.json",
+        plugin_dir / ".claude-plugin" / "plugin.json",
         {"name": name, "version": VERSION, "description": desc, "author": AUTHOR},
     )
+    # Cursor's native format
+    write_json(
+        plugin_dir / ".cursor-plugin" / "plugin.json",
+        {"name": name, "version": VERSION, "description": desc, "author": AUTHOR},
+    )
+    # Agent Plugins 1.0 (open standard: Cursor + Codex)
+    write_json(
+        plugin_dir / "plugin.json",
+        {
+            "$schema": AGENT_PLUGINS_SCHEMA,
+            "name": name,
+            "description": desc,
+            "version": VERSION,
+            "author": AUTHOR,
+        },
+    )
+
     return {"name": name, "source": f"./plugins/{name}", "description": desc, "version": VERSION}
 
 
@@ -167,15 +204,27 @@ def main() -> None:
 
     entries.append(build_plugin(BUNDLE_ALL, sorted(all_skill_dirs.keys()), all_skill_dirs))
 
+    marketplace_description = (
+        "Fork of warpdotdev/common-skills packaged as a multi-tool plugin marketplace: "
+        "curated bundle plugins (engineering, productivity, misc), pocockless variants "
+        "that drop skills overlapping mattpocock-skills, and warp-all."
+    )
     write_json(
-        MARKETPLACE,
+        CLAUDE_MARKETPLACE,
         {
             "name": MARKETPLACE_NAME,
             "owner": OWNER,
-            "metadata": {
-                "description": "Fork of warpdotdev/common-skills packaged as a Claude Code plugin marketplace: curated bundle plugins (engineering, productivity, misc), pocockless variants that drop skills overlapping mattpocock-skills, and warp-all.",
-                "version": VERSION,
-            },
+            "metadata": {"description": marketplace_description, "version": VERSION},
+            "plugins": entries,
+        },
+    )
+    write_json(
+        CURSOR_MARKETPLACE,
+        {
+            "name": MARKETPLACE_NAME,
+            "owner": OWNER,
+            "description": marketplace_description,
+            "version": VERSION,
             "plugins": entries,
         },
     )

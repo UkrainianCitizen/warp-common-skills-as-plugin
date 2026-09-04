@@ -1,0 +1,8 @@
+{
+  "name": "warp-engineering",
+  "version": "0.1.0",
+  "description": "All Warp dev-workflow skills: specs, PRs, CI triage, merge conflicts, autonomous implementation.",
+  "author": {
+    "name": "UkrainianCitizen"
+  }
+}

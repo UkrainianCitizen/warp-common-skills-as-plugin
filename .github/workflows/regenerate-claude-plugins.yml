@@ -1,4 +1,4 @@
-name: Regenerate Claude plugin files
+name: Regenerate plugin files
 
 on:
   push:
@@ -28,12 +28,12 @@ jobs:
 
       - name: Commit changes
         run: |
-          if git diff --quiet -- plugins .claude-plugin/marketplace.json; then
+          if git diff --quiet -- plugins .claude-plugin/marketplace.json .cursor-plugin/marketplace.json; then
             echo "Nothing to regenerate."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add plugins .claude-plugin/marketplace.json
-          git commit -m "Regenerate Claude plugin files from .agents/skills"
+          git add plugins .claude-plugin/marketplace.json .cursor-plugin/marketplace.json
+          git commit -m "Regenerate plugin files from .agents/skills"
           git push
