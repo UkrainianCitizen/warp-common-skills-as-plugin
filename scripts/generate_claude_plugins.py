@@ -10,21 +10,24 @@ Emits a small set of curated bundle plugins instead of one plugin per skill:
   warp-misc                     meta / branding / internal-feedback skills
   warp-all                      every skill in the repo, categorized or not
 
-Each plugin directory ships three manifests pointing at the same skills/ copy:
+Each plugin directory ships, over the same skills/ copy:
 
-  .claude-plugin/plugin.json   Claude Code
-  .cursor-plugin/plugin.json   Cursor's native format
-  plugin.json                  Agent Plugins 1.0 (the open standard Cursor and
-                                Codex both read; also the fallback for any tool
-                                that implements the open spec)
+  .claude-plugin/plugin.json   Claude Code plugin manifest
+  .codex-plugin/plugin.json    Codex plugin manifest
+  .cursor/rules/<skill>.mdc     one Cursor rule per skill (Cursor has no native
+                                SKILL.md reader; the rule body mirrors the
+                                skill's instructions, its frontmatter carries
+                                the skill's own description as the trigger)
 
-...and two marketplace/registry files at the repo root:
+...and one marketplace/registry file at the repo root:
 
   .claude-plugin/marketplace.json   Claude Code (`/plugin marketplace add`)
-  .cursor-plugin/marketplace.json   Cursor (`Import from Repo`)
 
-Codex reads skills straight out of .agents/skills/ without a plugin wrapper,
-so no Codex-specific registry file is generated - see README.
+Codex documents no marketplace schema, and Cursor discovers .cursor/rules
+directly, so neither gets a root registry file.
+
+Rules and field sources: ../major-ai-plugin-creation.md in the parent projects
+directory (not committed to this repo).
 
 Skill content is copied from .agents/skills/ - that stays the source of truth
 and this script is re-run after every upstream sync. CATEGORIES is maintained
@@ -41,13 +44,11 @@ REPO = Path(__file__).resolve().parent.parent
 SKILLS_SRC = REPO / ".agents" / "skills"
 PLUGINS_DIR = REPO / "plugins"
 CLAUDE_MARKETPLACE = REPO / ".claude-plugin" / "marketplace.json"
-CURSOR_MARKETPLACE = REPO / ".cursor-plugin" / "marketplace.json"
 
 MARKETPLACE_NAME = "warp-common-skills"
 OWNER = {"name": "UkrainianCitizen"}
 AUTHOR = {"name": "UkrainianCitizen"}
 VERSION = "0.1.0"
-AGENT_PLUGINS_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
 BUNDLE_ALL = "warp-all"
 
 # Hand-maintained. Every skill dir in .agents/skills/ should appear in exactly
@@ -115,27 +116,35 @@ DESCRIPTIONS: dict[str, str] = {
 }
 
 
-def read_frontmatter(skill_md: Path) -> dict[str, str]:
+def split_frontmatter(skill_md: Path) -> tuple[dict[str, str], str]:
+    """Return (frontmatter dict, markdown body) for a SKILL.md file."""
     text = skill_md.read_text(encoding="utf-8")
     if not text.startswith("---"):
-        return {}
+        return {}, text
     end = text.find("\n---", 3)
     block = text[3:end]
-    out: dict[str, str] = {}
+    body = text[end + len("\n---") :].lstrip("\n")
+
+    fm: dict[str, str] = {}
     key = None
     for line in block.splitlines():
         if line and not line[0].isspace() and ":" in line:
             key, _, val = line.partition(":")
             key = key.strip()
-            out[key] = val.strip()
+            fm[key] = val.strip()
         elif key and line.strip():
-            out[key] += " " + line.strip()
-    return out
+            fm[key] += " " + line.strip()
+    return fm, body
 
 
 def write_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
 
 
 def copy_skill(src: Path, dst: Path) -> None:
@@ -144,32 +153,44 @@ def copy_skill(src: Path, dst: Path) -> None:
     shutil.copytree(src, dst)
 
 
+def write_cursor_rule(rules_dir: Path, skill: str, description: str, body: str) -> None:
+    """One Apply-Intelligently rule per skill: description drives the trigger,
+    body mirrors the skill's instructions. No globs, no alwaysApply."""
+    desc = (description or f"The {skill} skill.").strip()
+    if len(desc) >= 2 and desc[0] == desc[-1] and desc[0] in "\"'":
+        desc = desc[1:-1].strip()  # upstream frontmatter sometimes quotes its own value
+    front = f"---\ndescription: {json.dumps(desc)}\nalwaysApply: false\n---\n\n"
+    write_text(rules_dir / f"{skill}.mdc", front + body.rstrip() + "\n")
+
+
 def build_plugin(name: str, skill_names: list[str], all_skill_dirs: dict[str, Path]) -> dict:
     plugin_dir = PLUGINS_DIR / name
-    dst_skills = plugin_dir / "skills"
-    for skill in skill_names:
-        copy_skill(all_skill_dirs[skill], dst_skills / skill)
     desc = DESCRIPTIONS.get(name, f"{name} skills.")
+
+    for skill in skill_names:
+        copy_skill(all_skill_dirs[skill], plugin_dir / "skills" / skill)
+        fm, body = split_frontmatter(all_skill_dirs[skill] / "SKILL.md")
+        write_cursor_rule(plugin_dir / ".cursor" / "rules", skill, fm.get("description", ""), body)
 
     # Claude Code
     write_json(
         plugin_dir / ".claude-plugin" / "plugin.json",
-        {"name": name, "version": VERSION, "description": desc, "author": AUTHOR},
-    )
-    # Cursor's native format
-    write_json(
-        plugin_dir / ".cursor-plugin" / "plugin.json",
-        {"name": name, "version": VERSION, "description": desc, "author": AUTHOR},
-    )
-    # Agent Plugins 1.0 (open standard: Cursor + Codex)
-    write_json(
-        plugin_dir / "plugin.json",
         {
-            "$schema": AGENT_PLUGINS_SCHEMA,
             "name": name,
-            "description": desc,
             "version": VERSION,
+            "description": desc,
             "author": AUTHOR,
+            "skills": "./skills/",
+        },
+    )
+    # Codex
+    write_json(
+        plugin_dir / ".codex-plugin" / "plugin.json",
+        {
+            "name": name,
+            "version": VERSION,
+            "description": desc,
+            "skills": "./skills/",
         },
     )
 
@@ -204,27 +225,20 @@ def main() -> None:
 
     entries.append(build_plugin(BUNDLE_ALL, sorted(all_skill_dirs.keys()), all_skill_dirs))
 
-    marketplace_description = (
-        "Fork of warpdotdev/common-skills packaged as a multi-tool plugin marketplace: "
-        "curated bundle plugins (engineering, productivity, misc), pocockless variants "
-        "that drop skills overlapping mattpocock-skills, and warp-all."
-    )
     write_json(
         CLAUDE_MARKETPLACE,
         {
             "name": MARKETPLACE_NAME,
             "owner": OWNER,
-            "metadata": {"description": marketplace_description, "version": VERSION},
-            "plugins": entries,
-        },
-    )
-    write_json(
-        CURSOR_MARKETPLACE,
-        {
-            "name": MARKETPLACE_NAME,
-            "owner": OWNER,
-            "description": marketplace_description,
-            "version": VERSION,
+            "metadata": {
+                "description": (
+                    "Fork of warpdotdev/common-skills packaged as a multi-tool plugin "
+                    "marketplace: curated bundle plugins (engineering, productivity, misc), "
+                    "pocockless variants that drop skills overlapping mattpocock-skills, "
+                    "and warp-all."
+                ),
+                "version": VERSION,
+            },
             "plugins": entries,
         },
     )

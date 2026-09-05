@@ -2,8 +2,5 @@
   "name": "warp-engineering-pocockless",
   "version": "0.1.0",
   "description": "warp-engineering minus skills that overlap mattpocock-skills (code-review, resolving-merge-conflicts).",
-  "author": {
-    "name": "UkrainianCitizen"
-  },
   "skills": "./skills/"
 }

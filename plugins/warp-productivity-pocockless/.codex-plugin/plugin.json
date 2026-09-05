@@ -2,8 +2,5 @@
   "name": "warp-productivity-pocockless",
   "version": "0.1.0",
   "description": "warp-productivity minus the research skill, which overlaps mattpocock-skills.",
-  "author": {
-    "name": "UkrainianCitizen"
-  },
   "skills": "./skills/"
 }

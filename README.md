@@ -1,9 +1,9 @@
 # warp-common-skills-as-plugin
 
 A fork of [`warpdotdev/common-skills`](https://github.com/warpdotdev/common-skills)
-packaged as a multi-tool plugin marketplace: Claude Code, Cursor, and (via the raw
-skill tree) Codex. Upstream ships its skills through the `skills` npm CLI. This fork
-exposes the same `.agents/skills/` as installable plugins and keeps them synced.
+packaged as installable plugins for Claude Code, Codex, and Cursor. Upstream ships
+its skills through the `skills` npm CLI. This fork wraps the same `.agents/skills/`
+in per-tool plugin manifests and keeps them synced.
 
 ## Install
 
@@ -16,27 +16,27 @@ exposes the same `.agents/skills/` as installable plugins and keeps them synced.
 /plugin install warp-misc@warp-common-skills
 ```
 
-### Cursor
-
-Use the marketplace "Import from Repo" flow with this repository URL, or point it
-at one bundle directly, e.g. `plugins/warp-engineering-pocockless`. Each plugin
-carries a native `.cursor-plugin/plugin.json`, and the repo root has a
-`.cursor-plugin/marketplace.json` listing every bundle.
-
 ### Codex
 
-Codex reads skills straight out of an `.agents/skills/` directory, no plugin
-wrapper needed. Either clone this repo and point Codex at it, or copy the skill
-directories you want into your own `~/.agents/skills` or `<repo>/.agents/skills`.
-Each bundle also ships an [Agent Plugins 1.0](https://agent-plugins.org) `plugin.json`
-at its root (`plugins/<bundle>/plugin.json`) for any Codex flow that consumes that
-open standard directly — this fork has not been able to confirm Codex's exact
-marketplace/registry mechanism, so treat that path as best-effort.
+Each bundle has a `.codex-plugin/plugin.json` manifest pointing at its `skills/`
+directory. Install a bundle by pointing Codex at `plugins/<bundle>/`, e.g.
+`plugins/warp-engineering-pocockless`. Codex documents no marketplace schema, so
+there is no repo-level registry to add.
+
+### Cursor
+
+Cursor has no native `SKILL.md` reader, so each skill is mirrored as a
+`.cursor/rules/<skill>.mdc` rule under its bundle. Copy the bundle's
+`.cursor/rules/` directory into your project's `.cursor/rules/`, or copy the
+individual `.mdc` files you want. Each rule uses "Apply Intelligently" with the
+skill's own description as the trigger.
 
 ## Bundles
 
-These tools enable or disable whole plugins, not individual skills, so the skills
-are grouped into a few bundles. Every plugin name is prefixed `warp-`.
+Claude Code and Codex enable or disable whole plugins, not individual skills, so
+the skills are grouped into a few bundles. Every plugin name is prefixed `warp-`.
+(Cursor rules are per skill, so a Cursor user can also just take individual
+`.mdc` files.)
 
 | Plugin | Skills |
 |---|---|
@@ -82,22 +82,28 @@ git push
 ## How the packaging works
 
 `.agents/skills/` is the source of truth, synced from upstream. Each skill keeps its
-own `SKILL.md` frontmatter, which is what Claude Code reads to decide when to trigger
-it.
+own `SKILL.md` with a `description` in the frontmatter, which is the trigger every
+tool uses to decide when to invoke it.
 
-`scripts/generate_claude_plugins.py` copies skills into `plugins/<bundle>/skills/`
-and writes, per bundle, a `.claude-plugin/plugin.json`, a `.cursor-plugin/plugin.json`,
-and a root `plugin.json` (Agent Plugins 1.0). At the repo root it writes
-`.claude-plugin/marketplace.json` and `.cursor-plugin/marketplace.json`. The
-`CATEGORIES` dict in that script is the hand-maintained skill-to-bundle mapping. A
-newly synced skill that is not listed there lands in `warp-all` only and prints a
-warning.
+`scripts/generate_claude_plugins.py` builds each `plugins/<bundle>/` with:
+
+- `skills/<skill>/` copied from `.agents/skills/`
+- `.claude-plugin/plugin.json` (Claude Code)
+- `.codex-plugin/plugin.json` (Codex)
+- `.cursor/rules/<skill>.mdc` per skill (Cursor): frontmatter `description` copied
+  from the skill, body copied from the skill's instructions
+
+At the repo root it writes `.claude-plugin/marketplace.json`. The `CATEGORIES` dict
+in the script is the hand-maintained skill-to-bundle mapping. A newly synced skill
+not listed there lands in `warp-all` only and prints a warning.
 
 `.github/workflows/regenerate-claude-plugins.yml` reruns the generator and commits
 whenever `.agents/skills/` or the generator changes on `main`.
 
-Do not hand-edit anything under `plugins/`, `.claude-plugin/`, or `.cursor-plugin/`.
-They are generated. Edit the generator or the skills instead.
+Do not hand-edit anything under `plugins/` or `.claude-plugin/`. They are generated.
+Edit the generator or the skills instead. The manifest formats and their sources are
+documented in `major-ai-plugin-creation.md` in the parent projects directory (local,
+not in this repo).
 
 For skill authoring conventions and the upstream contribution process, see the
 [upstream README](https://github.com/warpdotdev/common-skills#readme).

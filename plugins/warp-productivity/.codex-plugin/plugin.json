@@ -2,8 +2,5 @@
   "name": "warp-productivity",
   "version": "0.1.0",
   "description": "Research, readout documents, and multi-agent council/critique skills.",
-  "author": {
-    "name": "UkrainianCitizen"
-  },
   "skills": "./skills/"
 }

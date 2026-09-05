@@ -1,9 +1,0 @@
-{
-  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-  "name": "warp-productivity",
-  "description": "Research, readout documents, and multi-agent council/critique skills.",
-  "version": "0.1.0",
-  "author": {
-    "name": "UkrainianCitizen"
-  }
-}
