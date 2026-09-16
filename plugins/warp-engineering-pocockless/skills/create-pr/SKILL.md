@@ -7,12 +7,12 @@ description: Create a pull request in the warp repository for the current branch
 
 ## Overview
 
-This guide covers best practices for creating pull requests in the warp repository, including merging master, running presubmit checks, linking Linear tasks, ensuring appropriate test coverage, and structuring your PR for effective review.
+This guide covers best practices for creating pull requests in the warp repository, including merging master, validating changes efficiently, linking Linear tasks, ensuring appropriate test coverage, and structuring your PR for effective review.
 
 ## Related Skills
 
 - `write-pr-description` - Write the PR body itself: template sections, prose, and reviewer guidance
-- `fix-errors` - Fix presubmit failures (formatting, linting, tests) before opening PR
+- `fix-errors` - Fix targeted compilation, test, lint, or formatting failures before opening a PR
 - `warp-integration-test` - Add or update integration coverage for user-visible flows, regressions, and P0 use cases
 - `add-feature-flag` - Gate changes behind feature flags
 
@@ -29,28 +29,7 @@ git merge origin/master
 
 Resolve any merge conflicts locally before opening the PR.
 
-### 2. Run presubmit checks for code changes
-
-If the PR includes code changes, run the relevant presubmit checks before opening or updating it:
-
-```bash
-./script/presubmit
-```
-
-`./script/presubmit` runs:
-- `cargo fmt` - Code formatting
-- `cargo clippy` - Linting with all warnings as errors
-- All tests (unit, doc, and integration)
-If the PR is documentation-only (for example, skills, markdown, or other non-code content), you do not need to run `cargo fmt` or `cargo clippy` just to open or update the PR.
-
-If presubmit fails for a code-changing PR, use the `fix-errors` skill to resolve issues.
-
-**You must run `cargo fmt` and `cargo clippy` before:**
-- Opening a new PR that includes code changes
-- Pushing new commits that include code changes to an existing PR branch
-- Any reviewed branch update that changes code
-
-### 3. Review your changes
+### 2. Review your changes
 
 Before creating a PR, review what changes you're about to submit:
 
@@ -71,6 +50,18 @@ This helps you:
 - Write an accurate PR description
 - Ensure you're comparing against the correct base branch
 - **Tests:** Include tests when required—bug fixes (regression test), algorithmic code (unit tests), UI components (layout test), P0 use cases (integration test). See Testing Requirements below.
+
+### 3. Respect implementation agent validation
+
+PR creation is not a validation boundary. If the implementation workflow already completed its tests, lint checks, and final formatting pass and the candidate has not changed, do not rerun them.
+
+If merging master or preparing the PR changed source, tests, manifests, generated code, or configuration, validate the new candidate in this order:
+
+1. Run the relevant tests and fix the code until they pass.
+2. Run the applicable Clippy and other lint, typecheck, or build checks and fix their findings. Return to affected tests only when a fix materially changes behavior.
+3. Run `./script/format` once after all other code changes are complete.
+
+Do not rerun tests or lint after formatting, and do not run `./script/presubmit`, unless the user, task, or approved spec explicitly requires it. CI owns uncommon failures outside targeted local coverage. Documentation-only changes do not require Rust tests, Clippy, or formatting.
 
 ### 4. Link to Linear task
 
@@ -217,7 +208,7 @@ areas for the reviewer.
 1. **Monitor CI checks** - Ensure all automated checks pass
 2. **Respond to review comments** - Address feedback promptly
 3. **Keep the PR up to date** - Merge master if conflicts arise
-4. **Re-run relevant validation** - After making changes based on review feedback. For code changes, re-run `cargo fmt`/`cargo clippy` (and other relevant checks); for documentation-only changes, this is not required.
+4. **Validate changed candidates** - After code changes from review feedback, run affected tests, then lint checks, then `./script/format` once. Do not repeat validation for PR metadata or an unchanged candidate.
 
 ## Best Practices
 

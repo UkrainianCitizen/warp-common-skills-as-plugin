@@ -16,17 +16,17 @@ This skill helps resolve common issues encountered during development, including
 - WASM-specific errors
 - Test failures
 
-Before opening or updating a pull request, all presubmit checks must pass.
+Fix the reported failure with the narrowest useful command. Do not turn a targeted repair into repeated full-workspace validation.
 
-## Presubmit Checks
+## Full Presubmit
 
-Run all presubmit checks at once:
+Run the full presubmit only when the user, task, or approved spec explicitly requires it:
 
 ```bash
 ./script/presubmit
 ```
 
-This runs formatting, linting, and all tests. If it passes, you're ready to open a PR.
+This runs formatting checks, linting, and all tests. It is intentionally broader and more expensive than the default implementation workflow.
 
 ### Individual Checks
 
@@ -39,8 +39,7 @@ cargo fmt -- --check
 
 **Clippy (full workspace):**
 ```bash
-cargo clippy --workspace --exclude warp_completer --all-targets --all-features --tests -- -D warnings
-cargo clippy -p warp_completer --all-targets --tests -- -D warnings
+cargo clippy --workspace --all-targets --tests -- -D warnings
 ```
 
 **WASM Clippy:**
@@ -170,11 +169,13 @@ cargo clippy --target wasm32-unknown-unknown --profile release-wasm-debug_assert
 
 **When fixing:**
 - Fix one error type at a time when there are multiple issues
-- Run `cargo check` frequently to verify fixes
+- Run the smallest applicable `cargo check` when it helps resolve compiler errors; do not repeat broad checks without a relevant code change
 - For WASM errors, run WASM clippy to verify the fix
 - For complex changes, run relevant tests after fixing
 
 **After fixing:**
-- Always run `cargo fmt` and `cargo clippy` before pushing
-- Run the full presubmit script before opening or updating a PR. Use the `create-pr` skill for more detailed instructions
-- Verify tests pass in the areas you modified
+- Run the relevant `cargo nextest` tests and fix the code until they pass
+- Run the applicable Clippy invocation and fix its findings; return to affected tests only when a fix materially changes behavior
+- Run `./script/format` once after all other code changes are complete
+- Do not rerun tests or Clippy after formatting, and do not add a full presubmit run, unless explicitly required
+- If you only fixed a formatting failure and made no behavioral code change, rerun only the formatter
